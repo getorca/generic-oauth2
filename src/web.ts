@@ -20,10 +20,60 @@ export class GenericOAuth2Web extends WebPlugin implements GenericOAuth2Plugin {
   /**
    * Get a new access token using an existing refresh token.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async refreshToken(_options: OAuth2RefreshTokenOptions): Promise<any> {
-    return new Promise<any>((_resolve, reject) => {
-      reject(new Error('Functionality not implemented for PWAs yet'));
+  async refreshToken(options: OAuth2RefreshTokenOptions): Promise<any> {
+    // Create a temporary WebOptions object with just the necessary properties
+    this.webOptions = await WebUtils.buildWebOptions(options);
+    
+    return new Promise<any>((resolve, reject) => {
+      if (!options.accessTokenEndpoint) {
+        reject(new Error('ERR_PARAM_NO_ACCESS_TOKEN_ENDPOINT'));
+        return;
+      }
+
+      if (!options.refreshToken) {
+        reject(new Error('ERR_PARAM_NO_REFRESH_TOKEN'));
+        return;
+      }
+
+      const tokenRequest = new XMLHttpRequest();
+      tokenRequest.onload = () => {
+        if (tokenRequest.status === 200) {
+          const refreshTokenResponse = JSON.parse(tokenRequest.response);
+          resolve(refreshTokenResponse);
+        } else {
+          reject(new Error('ERR_REFRESH_TOKEN_FAILED'));
+        }
+      };
+      tokenRequest.onerror = () => {
+        reject(new Error('ERR_GENERAL'));
+      };
+      
+      tokenRequest.open('POST', options.accessTokenEndpoint, true);
+      tokenRequest.setRequestHeader('accept', 'application/json');
+      if (this.webOptions.sendCacheControlHeader) {
+        tokenRequest.setRequestHeader(
+            'cache-control',
+            'no-cache',
+        );
+      }
+      tokenRequest.setRequestHeader(
+        'content-type',
+        'application/x-www-form-urlencoded',
+      );
+      
+      // Build the refresh token request body
+      let body = '';
+      body += encodeURIComponent('grant_type') + '=' + encodeURIComponent('refresh_token') + '&';
+      body += encodeURIComponent('client_id') + '=' + encodeURIComponent(options.appId) + '&';
+      body += encodeURIComponent('refresh_token') + '=' + encodeURIComponent(options.refreshToken);
+      if (options.scope) {
+        body += '&' + encodeURIComponent('scope') + '=' + encodeURIComponent(options.scope);
+      }
+      if (this.webOptions.pkceCodeVerifier) {
+        body += '&' + encodeURIComponent('code_verifier') + '=' + encodeURIComponent(this.webOptions.pkceCodeVerifier);
+      }
+      
+      tokenRequest.send(body);
     });
   }
 
